@@ -218,44 +218,33 @@ class Tabs(ft.Tabs):
         self.update()
 
 
-def main(page: ft.Page):
-    page.title = 'Desktollama'
-    page.padding = 0
-    page.spacing = 0
-    page.theme = ft.Theme(color_scheme_seed='#fab86c')
+class DesktollamaApp:
+    def __init__(self, page: ft.Page):
+        self.page = page
+        self.tabs = Tabs()
+        self.setup_page()
 
-    tabs = Tabs()
+    def setup_page(self):
+        self.page.title = 'Desktollama'
+        self.page.padding = 0
+        self.page.spacing = 0
+        self.page.theme = ft.Theme(color_scheme_seed='#fab86c')
+        self.page.overlay.append(self.create_overlay_container())
 
-    page.overlay.append(
-        ft.Container(
+        self.page.add(
+            ft.Container(
+                self.tabs,
+                expand=True,
+                bgcolor="#282828",
+            )
+        )
+
+    def create_overlay_container(self) -> ft.Container:
+        return ft.Container(
             content=ft.Row(
                 controls=[
-                    ft.IconButton(
-                        icon=ft.icons.SETTINGS_APPLICATIONS,
-                        icon_size=40,
-                        tooltip="Settings",
-                        hover_color='#00000000',
-                        focus_color='#00000000',
-                        highlight_color='#6cfa6d',
-                        padding=0,
-                        style=ft.ButtonStyle(
-                            shape=ft.RoundedRectangleBorder(6)
-                        ),
-                        on_click=tabs.settings
-                    ),
-                    ft.IconButton(
-                        icon=ft.icons.ADD_BOX,
-                        icon_size=40,
-                        tooltip="New Chat",
-                        hover_color='#00000000',
-                        focus_color='#00000000',
-                        highlight_color='#6cfa6d',
-                        padding=0,
-                        style=ft.ButtonStyle(
-                            shape=ft.RoundedRectangleBorder(6)
-                        ),
-                        on_click=tabs.add_tab
-                    ),
+                    self.create_icon_button(ft.icons.SETTINGS_APPLICATIONS, "Settings", self.tabs.settings),
+                    self.create_icon_button(ft.icons.ADD_BOX, "New Chat", self.tabs.add_tab),
                 ],
                 spacing=2
             ),
@@ -264,14 +253,25 @@ def main(page: ft.Page):
             height=46,
             padding=0,
         )
-    )
 
-    page.add(
-        ft.Container(
-            tabs,
-            expand=True,
-            bgcolor="#282828",
+    def create_icon_button(self, icon: str, tooltip: str, on_click) -> ft.IconButton:
+        return ft.IconButton(
+            icon=icon,
+            icon_size=40,
+            tooltip=tooltip,
+            hover_color='#00000000',
+            focus_color='#00000000',
+            highlight_color='#6cfa6d',
+            padding=0,
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(6)
+            ),
+            on_click=on_click
         )
-    )
+
+
+def main(page: ft.Page):
+    DesktollamaApp(page)
+
 
 ft.app(main)
