@@ -1,80 +1,71 @@
+from typing import Any, List, Optional, Union
+
 import flet as ft
 import textwrap
 import ollama
 
 
 class DropdownMenu(ft.PopupMenuButton):
-    DEFAULT_COLOR = 'black'
-    ITEM_HEIGHT = 30
-    CONTENT_PADDING = ft.padding.only(left=6, right=6)
-    BORDER_RADIUS = 6
-    ICON_SIZE = 20
-    ITEM_ICON_SIZE = 22
-
     def __init__(
             self,
-            color: str = None,
-            bgcolor: str = None,
-            items: list = None
+            color: Optional[str] = '#cccccc',
+            bgcolor: Optional[str] = '#282828',
+            items: list = None,
+            value: Optional[str] = 'Select Model'
     ):
         super().__init__()
-        self.color = color or self.DEFAULT_COLOR
+        self.color = color
         self.bgcolor = bgcolor
-        self.items = items
-        self.selected_text = ft.Text('Select Model', color=self.color, weight=ft.FontWeight.W_700)
+        self.value = value
+        self.selected_text = self.create_selected_text()
         self.content = self.create_content()
-        self.items = self.create_items()
-        self.shape = ft.RoundedRectangleBorder(self.BORDER_RADIUS)
+        self.items = self.create_items(items)
+        self.shape = ft.RoundedRectangleBorder(6)
         self.elevation = 8
+
+    def create_selected_text(self) -> ft.Text:
+        return ft.Text(value=self.value, color=self.color, weight=ft.FontWeight.W_700)
 
     def create_content(self) -> ft.Container:
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    self.create_icon(ft.icons.SMART_TOY_OUTLINED, self.ICON_SIZE),
                     self.selected_text,
-                    self.create_icon(ft.icons.ARROW_DROP_DOWN, self.ICON_SIZE)
+                    ft.Icon(name=ft.icons.ARROW_DROP_DOWN, color=self.color, size=26)
                 ],
                 alignment=ft.MainAxisAlignment.START,
                 spacing=4,
             ),
             bgcolor=self.bgcolor,
-            height=self.ITEM_HEIGHT,
-            border_radius=self.BORDER_RADIUS,
+            height=30,
+            border_radius=6,
             alignment=ft.alignment.center_left,
-            padding=self.CONTENT_PADDING,
-            shadow=ft.BoxShadow(
-                spread_radius=0,
-                blur_radius=6,
-                color='#282828',
-                offset=ft.Offset(0, 2),
-                blur_style=ft.ShadowBlurStyle.NORMAL,
-            ),
+            padding=ft.padding.only(left=12, right=6)
         )
 
-    def create_items(self) -> list:
+    def create_items(self, items) -> list:
+        if items is None:
+            return []
         return [
-            ft.PopupMenuItem(
-                content=ft.Row(
-                    controls=[
-                        self.create_icon(ft.icons.SMART_TOY_OUTLINED, self.ITEM_ICON_SIZE),
-                        ft.Text(item, weight=ft.FontWeight.W_700, color=self.color)
-                    ]
-                ),
-                height=self.ITEM_HEIGHT,
-                on_click=self.update_button
-            ) for item in self.items
+            self.create_popup_menu_item(item) for item in items
         ]
 
-    def create_icon(self, icon_name: str, size: int) -> ft.Icon:
-        return ft.Icon(name=icon_name, color=self.color, size=size)
+    def create_popup_menu_item(self, item: str) -> ft.PopupMenuItem:
+        return ft.PopupMenuItem(
+            content=ft.Row(
+                controls=[
+                    ft.Icon(name=ft.icons.SMART_TOY_OUTLINED, color=self.color, size=22),
+                    ft.Text(item, weight=ft.FontWeight.W_700, color=self.color)
+                ]
+            ),
+            height=30,
+            on_click=self.update_button
+        )
 
     def update_button(self, e) -> None:
-        value = e.control.content.controls[1].value
-        self.selected_text.value = value
+        self.value = e.control.content.controls[1].value
+        self.selected_text.value = self.value
         self.update()
-
-
 
 
 
@@ -108,6 +99,7 @@ class ChatTab(ft.Tab):
                     ft.Row(
                         controls=[
                             DropdownMenu(
+                                color='#282828',
                                 bgcolor='#fab86c',
                                 items=sorted(i['name'] for i in ollama.list().get('models'))
                             ),
@@ -230,10 +222,7 @@ def main(page: ft.Page):
     page.title = 'Desktollama'
     page.padding = 0
     page.spacing = 0
-    page.theme = ft.Theme(
-        color_scheme_seed='#fab86c',
-        primary_color='#fab86c'
-    )
+    page.theme = ft.Theme(color_scheme_seed='#fab86c')
 
     tabs = Tabs()
 
