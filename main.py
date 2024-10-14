@@ -3,6 +3,8 @@ from typing import Any, List, Optional, Union
 import flet as ft
 import textwrap
 import ollama
+import asyncio
+
 
 
 class DropdownMenu(ft.PopupMenuButton):
@@ -68,112 +70,6 @@ class DropdownMenu(ft.PopupMenuButton):
         self.update()
 
 
-
-class ChatTab(ft.Tab):
-    def __init__(
-            self,
-            name=None
-    ):
-        super().__init__()
-        self.tab_content = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(
-                        name=ft.icons.WECHAT_OUTLINED,
-                        size=20,
-                        # offset=(0.1, 0)
-
-                    ),
-                    ft.Text(
-                        value=textwrap.shorten(name, width=20, placeholder="..."),
-                        weight=ft.FontWeight.W_600,
-                    )
-                ],
-            ),
-            padding=ft.padding.only(right=12),
-            # margin=10
-        )
-        self.content = ft.Container(
-            content=ft.Column(
-                controls=[
-                    ft.Row(
-                        controls=[
-                            DropdownMenu(
-                                color='#282828',
-                                bgcolor='#fab86c',
-                                items=sorted(i['name'] for i in ollama.list().get('models'))
-                            ),
-                            ft.Text('page'),
-                            ft.Row(
-                                controls=[
-                                    ft.IconButton(
-                                        icon=ft.icons.CONTROL_POINT_DUPLICATE,
-                                        padding=0,
-                                        tooltip='Duplicate',
-                                        style=ft.ButtonStyle(
-                                            shape=ft.RoundedRectangleBorder(6)
-                                        ),
-                                        on_click=lambda e: self.parent.duplicate_tab(self)
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.icons.CLOSE,
-                                        padding=0,
-                                        tooltip='Close',
-                                        style=ft.ButtonStyle(
-                                            shape=ft.RoundedRectangleBorder(6)
-                                        ),
-                                        on_click=lambda e: self.parent.close_tab(self)
-                                    )
-                                ]
-                            )
-                        ],
-                        height=30,
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-                    ),
-                    ft.Container(
-                        content=ft.ListView(
-                            expand=True,
-                            padding=60,
-                            spacing=20,
-                            auto_scroll=True,
-                            divider_thickness=1
-                        ),
-                        padding=ft.padding.symmetric(vertical=6, horizontal=6),
-                        expand=True,
-                    ),
-                    ft.CupertinoTextField(
-                        color='#fdb975',
-                        bgcolor='#272727',
-                        focused_bgcolor='#333333',
-                        max_lines=6,
-                        border=ft.border.all(width=0, color='#222222'),
-                        border_radius=6,
-                        shadow=ft.BoxShadow(
-                            spread_radius=1,
-                            blur_radius=6,
-                            color='#282828',
-                            offset=ft.Offset(0, 2),
-                            blur_style=ft.ShadowBlurStyle.NORMAL,
-                        ),
-                        shift_enter=True,
-                        suffix=ft.IconButton(
-                            icon=ft.icons.SEND,
-                            splash_color='green',
-                            style=ft.ButtonStyle(
-                                shape=ft.RoundedRectangleBorder(radius=6),
-                            ),
-                            # on_click=self.submit_message
-                        ),
-                        # on_submit=self.submit_message
-                    )
-                ],
-                spacing=20
-            ),
-            padding=ft.padding.only(left=20, top=10, right=20, bottom=20),
-            bgcolor='#404040',
-        )
-
-
 class Tabs(ft.Tabs):
     def __init__(self):
         super().__init__()
@@ -199,7 +95,7 @@ class Tabs(ft.Tabs):
         ]
 
     def add_tab(self, e):
-        self.tabs.append(ChatTab(name=f'New Chat'))
+        self.tabs.append(ChatTab(title=f'New Chat'))
         self.selected_index = len(self.tabs) - 1
         self.update()
 
@@ -216,6 +112,125 @@ class Tabs(ft.Tabs):
     def settings(self, e):
         self.selected_index = 0
         self.update()
+
+
+class ChatTab(ft.Tab):
+    def __init__(self, title=None):
+        super().__init__()
+        self.tab_title = title
+        self.tab_content = self._create_tab_content()
+        self.content = self._create_chat_content()
+
+    def _create_tab_content(self):
+        icon = ft.Icon(name=ft.icons.WECHAT_OUTLINED, size=20)
+        text = ft.Text(
+            value=textwrap.shorten(self.tab_title, width=20, placeholder="..."),
+            weight=ft.FontWeight.W_600
+        )
+        return ft.Container(
+            content=ft.Row(controls=[icon, text]),
+            padding=ft.padding.only(right=12)
+        )
+
+    def _create_chat_content(self):
+        chat_header = self._create_chat_header()
+        chat_history = self._create_chat_history()
+        chat_input = self._create_chat_input()
+
+        return ft.Container(
+            content=ft.Column(
+                controls=[chat_header, chat_history, chat_input]
+            ),
+            padding=ft.padding.only(left=20, top=10, right=20, bottom=20),
+            bgcolor='#404040'
+        )
+
+    def _create_chat_header(self):
+        duplicate_button = self._create_icon_button(
+            icon=ft.icons.CONTROL_POINT_DUPLICATE,
+            tooltip='Duplicate',
+            on_click=lambda e: self._handle_duplicate()
+        )
+        close_button = self._create_icon_button(
+            icon=ft.icons.CLOSE,
+            tooltip='Close',
+            on_click=lambda e: self._handle_close()
+        )
+
+        model_dropdown = DropdownMenu(
+            color='#282828',
+            bgcolor='#fab86c',
+            items=sorted(i['name'] for i in ollama.list().get('models'))
+        )
+
+        buttons_row = ft.Row(controls=[duplicate_button, close_button])
+
+        return ft.Row(
+            controls=[
+                model_dropdown,
+                ft.Text('page'),
+                buttons_row
+            ],
+            height=30,
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+        )
+
+    def _create_chat_history(self):
+        return ft.ListView(
+            expand=True,
+            padding=60,
+            spacing=20,
+            auto_scroll=True,
+            divider_thickness=1
+        )
+
+    def _create_chat_input(self):
+        return ft.CupertinoTextField(
+            color='#fdb975',
+            bgcolor='#272727',
+            focused_bgcolor='#333333',
+            max_lines=6,
+            border=ft.border.all(width=0, color='#222222'),
+            border_radius=6,
+            shift_enter=True,
+            suffix=self._create_send_button(),
+            shadow=ft.BoxShadow(
+                blur_radius=6,
+                color='#000000',
+                offset=ft.Offset(0, 1),
+            ),
+            # on_submit=self.submit_message
+        )
+
+    def _create_send_button(self):
+        return ft.IconButton(
+            icon=ft.icons.SEND,
+            splash_color='green',
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(radius=6),
+            ),
+            # on_click=self.submit_message
+        )
+
+    def _create_icon_button(self, icon, tooltip, on_click):
+        """Helper to create an icon button with consistent style."""
+        return ft.IconButton(
+            icon=icon,
+            padding=0,
+            tooltip=tooltip,
+            style=ft.ButtonStyle(
+                shape=ft.RoundedRectangleBorder(6)
+            ),
+            on_click=on_click
+        )
+
+    def _handle_duplicate(self):
+        if self.parent:
+            self.parent.duplicate_tab(self)
+
+    def _handle_close(self):
+        if self.parent:
+            self.parent.close_tab(self)
 
 
 class DesktollamaApp:
