@@ -3,6 +3,7 @@ from typing import Any, List, Optional, Union
 import flet as ft
 import textwrap
 import ollama
+import uuid
 import asyncio
 
 
@@ -13,7 +14,7 @@ class DropdownMenu(ft.PopupMenuButton):
             color: Optional[str] = '#cccccc',
             bgcolor: Optional[str] = '#282828',
             items: list = None,
-            value: Optional[str] = 'Select Model'
+            value: Optional[str] = 'Select Model',
     ):
         super().__init__()
         self.color = color
@@ -70,6 +71,28 @@ class DropdownMenu(ft.PopupMenuButton):
         self.update()
 
 
+class Message(ft.Row):
+    def __init__(self, role='user', content='', **kwargs):
+        super().__init__(**kwargs)
+        self.role = role
+        self.controls = [
+            ft.Icon(
+                name=ft.icons.FACE_OUTLINED if role == 'user' else ft.icons.SMART_TOY_OUTLINED,
+                size=30
+            ),
+            ft.Markdown(
+                content,
+                selectable=True,
+                extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                code_theme=ft.MarkdownCodeTheme.GRADIENT_DARK,
+                on_tap_link=lambda e: ft.Page.launch_url(e.data),
+                expand=True
+            )
+        ]
+        self.spacing = 30
+        self.vertical_alignment = ft.CrossAxisAlignment.START
+
+
 class Tabs(ft.Tabs):
     def __init__(self):
         super().__init__()
@@ -94,20 +117,40 @@ class Tabs(ft.Tabs):
             )
         ]
 
+    def did_mount(self):
+        self.load_previous_tabs()
+
+    def load_previous_tabs(self):
+        previous_tabs = self.page.client_storage.get_keys('desktollama.tab.')
+        for tab_id in previous_tabs:
+            print(tab_id)
+            print(self.page.client_storage.get(tab_id))
+            self.tabs.append(ChatTab(title=f'New Chat', tab_id=tab_id))
+
+        self.selected_index = len(self.tabs) - 1
+        self.update()
+
+
     def add_tab(self, e):
-        self.tabs.append(ChatTab(title=f'New Chat'))
+        tab_id = f'desktollama.tab.{uuid.uuid4()}'
+        self.tabs.append(ChatTab(title=f'New Chat', tab_id=tab_id))
+        self.page.client_storage.set(tab_id, {'model': '', 'chat_history': []})
         self.selected_index = len(self.tabs) - 1
         self.update()
 
     def close_tab(self, tab):
         self.tabs.remove(tab)
+        self.page.client_storage.remove(tab.tab_id)
         self.selected_index = len(self.tabs) - 1
         self.update()
 
     def duplicate_tab(self, tab):
-        self.tabs.insert(self.selected_index + 1, ChatTab('copy'))
-        self.selected_index += 1
+        tab_id = f'desktollama.tab.{uuid.uuid4()}'
+        self.tabs.append(ChatTab(title=f'Copy of...', tab_id=tab_id, chat_model=tab.model_dropdown.value))
+        self.page.client_storage.set(tab_id, self.page.client_storage.get(tab.tab_id))
+        self.selected_index = len(self.tabs) - 1
         self.update()
+
 
     def settings(self, e):
         self.selected_index = 0
@@ -115,10 +158,26 @@ class Tabs(ft.Tabs):
 
 
 class ChatTab(ft.Tab):
-    def __init__(self, title=None):
+    def __init__(
+            self,
+            tab_id=None,
+            chat_model=None,
+            title=None
+    ):
         super().__init__()
+        self.tab_id = tab_id
+        self.chat_model = chat_model or 'Select Model'
         self.tab_title = title
+        self.model_dropdown = DropdownMenu(
+            color='#282828',
+            bgcolor='#fab86c',
+            value=self.chat_model,
+            items=sorted(i['name'] for i in ollama.list().get('models')),
+            # on_change=  set self.chat_model
+        )
         self.tab_content = self._create_tab_content()
+        self.chat_history = self._create_chat_history()
+        self.chat_input = self._create_chat_input()
         self.content = self._create_chat_content()
 
     def _create_tab_content(self):
@@ -134,12 +193,9 @@ class ChatTab(ft.Tab):
 
     def _create_chat_content(self):
         chat_header = self._create_chat_header()
-        chat_history = self._create_chat_history()
-        chat_input = self._create_chat_input()
-
         return ft.Container(
             content=ft.Column(
-                controls=[chat_header, chat_history, chat_input]
+                controls=[chat_header, self.chat_history, self.chat_input]
             ),
             padding=ft.padding.only(left=20, top=10, right=20, bottom=20),
             bgcolor='#404040'
@@ -157,17 +213,11 @@ class ChatTab(ft.Tab):
             on_click=lambda e: self._handle_close()
         )
 
-        model_dropdown = DropdownMenu(
-            color='#282828',
-            bgcolor='#fab86c',
-            items=sorted(i['name'] for i in ollama.list().get('models'))
-        )
-
         buttons_row = ft.Row(controls=[duplicate_button, close_button])
 
         return ft.Row(
             controls=[
-                model_dropdown,
+                self.model_dropdown,
                 ft.Text('page'),
                 buttons_row
             ],
@@ -199,7 +249,7 @@ class ChatTab(ft.Tab):
                 color='#000000',
                 offset=ft.Offset(0, 1),
             ),
-            # on_submit=self.submit_message
+            on_submit=self.submit_message
         )
 
     def _create_send_button(self):
@@ -209,11 +259,10 @@ class ChatTab(ft.Tab):
             style=ft.ButtonStyle(
                 shape=ft.RoundedRectangleBorder(radius=6),
             ),
-            # on_click=self.submit_message
+            on_click=self.submit_message
         )
 
     def _create_icon_button(self, icon, tooltip, on_click):
-        """Helper to create an icon button with consistent style."""
         return ft.IconButton(
             icon=icon,
             padding=0,
@@ -232,12 +281,26 @@ class ChatTab(ft.Tab):
         if self.parent:
             self.parent.close_tab(self)
 
+    def submit_message(self, e):
+        user_message = self.chat_input.value
+        if not user_message.strip():
+            return
+
+        self.chat_history.controls.append(Message(role="user", content=user_message))
+        self.chat_history.update()
+
+        self.chat_input.value = ''
+        self.chat_input.update()
+
+
+
 
 class DesktollamaApp:
     def __init__(self, page: ft.Page):
         self.page = page
         self.tabs = Tabs()
         self.setup_page()
+        # print(self.page)
 
     def setup_page(self):
         self.page.title = 'Desktollama'
